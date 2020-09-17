@@ -24,6 +24,8 @@ import io.circe.syntax._
 import io.circe.generic.semiauto._
 import zio.test.ExecutionStrategy.Sequential
 
+import scala.util.Try
+
 object UserServiceSpec extends DefaultRunnableSpec {
   override def spec = suite("routes suite")(
     testM("GetAll users initially returns an empty list") {
@@ -33,7 +35,12 @@ object UserServiceSpec extends DefaultRunnableSpec {
       } yield body
       assertM(io)(equalTo("[]"))
     },
-
+    testM("Sleep") {
+      for {
+        _ <- ZIO.fromTry(Try{Thread.sleep(500)})
+      }
+      yield assertCompletes
+    },
     testM("Create user creates a user succesfully") {
       implicit val UserEncoder: Encoder[User] = deriveEncoder[User]
       val request = Request[UserTask](Method.POST, uri"/users").withEntity(User(1, "Howdy!"))
@@ -43,7 +50,12 @@ object UserServiceSpec extends DefaultRunnableSpec {
       } yield body
       assertM(io)(equalTo("{\"id\":1,\"name\":\"Howdy!\"}"))
     },
-
+    testM("Sleep") {
+      for {
+        _ <- ZIO.fromTry(Try{Thread.sleep(500)})
+      }
+        yield assertCompletes
+    },
     testM("Create two users") {
       implicit val UserEncoder: Encoder[User] = deriveEncoder[User]
       val request = Request[UserTask](Method.POST, uri"/users").withEntity(User(1, "Howdy!"))
@@ -60,5 +72,5 @@ object UserServiceSpec extends DefaultRunnableSpec {
         assert(body1)(equalTo("{\"id\":1,\"name\":\"Howdy!\"}")) &&
           assert(body2)(equalTo("{\"id\":2,\"name\":\"Howdy1!\"}")) &&
           assert(body3)(equalTo("[{\"id\":1,\"name\":\"Howdy!\"},{\"id\":2,\"name\":\"Howdy1!\"}]"))
-    }).provideSomeLayer[TestEnvironment](appEnvironmentLayer) @@ sequential @@ noDelay
+    }).provideSomeLayer[TestEnvironment](appEnvironmentLayer)
 }

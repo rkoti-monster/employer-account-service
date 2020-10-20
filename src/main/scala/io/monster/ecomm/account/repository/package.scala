@@ -1,23 +1,11 @@
 package io.monster.ecomm.account
 
-import cats.effect.{Blocker, Resource}
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
-import doobie.ExecutionContexts
-import doobie.h2.H2Transactor
-import doobie.hikari.HikariTransactor
-import doobie.util.transactor.Transactor
-import io.monster.ecomm.account.Main.platform
-import io.monster.ecomm.account.configuration.Configuration.DbConfig
-import zio.{Has, RIO, Task, URLayer, ZLayer}
-import io.monster.ecomm.account.model.{Account, User}
-import zio._
-import zio.interop.catz._
+import io.monster.ecomm.account.model.{ Account, User }
+import zio.{ Has, RIO }
 
 package object repository {
-  type UserRepository = Has[Repository.UserService]
-  type AccountRepository = Has[Repository.AccountService]
-  type DbTransactor = Has[DbTransactor.Resource]
-  type DBConfig = Has[DbConfig]
+  type UserRepository = Has[UserRepository.UserService]
+  type AccountRepository = Has[AccountRepository.AccountService]
 
   def get(id: Int): RIO[UserRepository, User] = RIO.accessM(_.get.get(id))
 
@@ -33,14 +21,12 @@ package object repository {
 
   def getAllAccounts: RIO[AccountRepository, List[Account]] = RIO.accessM(_.get.getAllAccounts)
 
-  def createAccount(account: Account): RIO[AccountRepository, Account] = RIO.accessM(_.get.createAccount(account))
+  def createAccount(account: Account): RIO[AccountRepository, Account] =
+    RIO.accessM(_.get.createAccount(account))
 
   def deleteAccount(id: String): RIO[AccountRepository, Boolean] = RIO.accessM(_.get.deleteAccount(id))
 
-  def updateAccount(account: Account): RIO[AccountRepository, Boolean] = RIO.accessM(_.get.updateAccount(account))
+  def updateAccount(account: Account): RIO[AccountRepository, Boolean] =
+    RIO.accessM(_.get.updateAccount(account))
 
 }
-
-
-
-

@@ -1,52 +1,87 @@
 package io.monster.ecomm.account.http.endpoint
 
-import io.circe.{Decoder, Encoder}
-import io.monster.ecomm.account.model.User
-import org.http4s.circe.{jsonEncoderOf, jsonOf}
-import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
-import org.http4s.dsl.Http4sDsl
-import zio.{RIO, Task}
-import zio.interop.catz._
 import io.circe.generic.auto._
-import io.monster.ecomm.account
-import io.monster.ecomm.account.environment.Environments.AppEnvironment
-import io.monster.ecomm.account.repository.UserRepositoryImpl
+import io.circe.{ Decoder, Encoder }
+import io.monster.ecomm.account.environment.AppEnvironment
+import io.monster.ecomm.account.model.{ User, UserNotFound }
 import io.monster.ecomm.account.repository._
-import org.http4s.Method.UPDATE
-import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
-import org.http4s.circe._
-import org.http4s.server.Router
+import org.http4s.circe.{ jsonEncoderOf, jsonOf }
+import org.http4s.{ EntityDecoder, EntityEncoder }
+import zio.RIO
+import zio.interop.catz._
+import org.http4s.rho.swagger.SwaggerSupport
+import org.http4s.rho.RhoRoutes
+import io.monster.ecomm.account.http.SwaggerTags._
 
+@SuppressWarnings(Array("org.wartremover.warts.NonUnitStatements"))
 object Users {
   type UserTask[A] = RIO[AppEnvironment, A]
 
   private val prefixPath = "/users"
+  private val userNotFound = "User not found"
+  private val errorOccurred = "Error occurred"
 
-  implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[UserTask, A] = jsonOf[UserTask, A]
-  implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[UserTask, A] = jsonEncoderOf[UserTask, A]
+  implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[UserTask, A] =
+    jsonOf[UserTask, A]
 
-  val dsl: Http4sDsl[UserTask] = Http4sDsl[UserTask]
+  implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[UserTask, A] =
+    jsonEncoderOf[UserTask, A]
 
-  import dsl._
+  private val swaggerSupport = SwaggerSupport.apply[UserTask]
+  import swaggerSupport._
 
-  val userRoutes =
-    HttpRoutes.of[UserTask] {
-      case GET -> Root =>
-        Ok(getAll)
-      case GET -> Root / IntVar(id) =>
-        Ok(get(id))
-      case request@POST -> Root =>
-        request.decode[User] {
-          user => Created(create(user))
-        }
-      case DELETE -> Root / IntVar(id) => Ok(delete(id))
-      case request@PUT -> Root / IntVar(id) =>
-        request.decode[User] {
-          user => Ok(update(user))
-        }
-    }
+  val api: RhoRoutes[UserTask] = new RhoRoutes[UserTask] {
+    "Get all users" **
+      List(internalApi, userApi) @@
+      GET / prefixPath |>> { () =>
+        getAll.foldM(err => InternalServerError(errorOccurred), users => Ok(users))
+      }
 
-  val routes: HttpRoutes[UserTask] = Router(
-    prefixPath -> userRoutes
-  )
+    "Find user with user id" **
+      userApi @@
+      GET / prefixPath / pathVar[Int]("userId", ApiDescription.userId) |>> { (userId: Int) =>
+        get(userId).foldM(
+          {
+            case _: UserNotFound => InternalServerError(userNotFound)
+            case _: Throwable    => InternalServerError(errorOccurred)
+          },
+          user => Ok(user)
+        )
+      }
+
+    "Delete user with user id" **
+      userApi @@
+      DELETE / prefixPath / pathVar[Int]("userId", ApiDescription.userId) |>> { (userId: Int) =>
+        delete(userId).foldM(
+          {
+            case _: UserNotFound => InternalServerError(userNotFound)
+            case _: Throwable    => InternalServerError(errorOccurred)
+          },
+          user => Ok(user)
+        )
+      }
+
+    "Create a new user" **
+      userApi @@
+      POST / prefixPath ^ EntityDecoder[UserTask, User] |>> { (body: User) =>
+        create(body).foldM(err => InternalServerError(errorOccurred), _ => Created(body))
+      }
+
+    "Update user entity with user id" **
+      userApi @@
+      PUT / prefixPath / pathVar[Int]("userId", ApiDescription.userId) ^ EntityDecoder[UserTask, User] |>> {
+        (userId: Int, body: User) =>
+          update(body).foldM(
+            {
+              case _: UserNotFound => InternalServerError(userNotFound)
+              case _: Throwable    => InternalServerError(errorOccurred)
+            },
+            user => Ok(user)
+          )
+      }
+  }
+}
+
+object ApiDescription {
+  val userId = "User ID"
 }

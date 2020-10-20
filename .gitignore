@@ -1,3 +1,50 @@
-/project/
-/.idea/
-/target/
+# sbt
+# (may want to keep parts of 'project')
+bin/
+#project/
+target/
+build/
+/project/target/
+/project/project/
+
+/src/it/resources/target/
+/src/target/
+
+# eclipse
+build
+.classpath
+.project
+.settings
+.worksheet
+
+# intellij idea
+*.log
+*.iml
+*.ipr
+*.iws
+.idea
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/task.xml
+out
+
+# mac
+.DS_Store
+
+# other?
+.history
+.scala_dependencies
+.cache
+.cache-main
+
+#general
+*.class
+
+# VSCode
+.vscode/
+
+# Metal & bloop
+.metals/
+.bloop/
+project/metals.sbt
+project/project

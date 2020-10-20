@@ -1,78 +1,84 @@
 package io.monster.ecomm.account.repository
 
+import com.github.mlangc.slf4zio.api.{ LoggingSupport, Slf4jLoggerOps }
+import doobie.ConnectionIO
 import doobie.hikari.HikariTransactor
 import doobie.implicits._
-import doobie.{LogHandler, Query0, Update0}
-import io.monster.ecomm.account.model.{User, UserNotFound}
-import io.monster.ecomm.account.repository.Repository.UserService
+import io.getquill.{ idiom => _ }
+import io.monster.ecomm.account.model.schema._
+import io.monster.ecomm.account.model.{ User, UserNotFound }
+import io.monster.ecomm.account.repository.UserRepository.UserService
 import zio.Task
 import zio.interop.catz._
 
-final case class UserRepositoryImpl(xa: HikariTransactor[Task]) extends UserService {
-  def get(id: Long): Task[User] = {
-    SQL.get(id)
-      .option
+final case class UserRepositoryImpl(xa: HikariTransactor[Task]) extends UserService with LoggingSupport {
+  def get(id: Long): Task[User] =
+    SQL
+      .get(id)
       .transact(xa)
       .foldM(
         err => Task.fail(err),
-        maybeUser => Task.require(UserNotFound(id))(Task.succeed(maybeUser)))
-  }
+        {
+          case Nil       => Task.fail(UserNotFound(1))
+          case user :: _ => Task.succeed(user)
+        }
+      )
 
-  def getAll: Task[List[User]] = {
-    SQL.getAll().to[List].transact(xa).foldM(err => Task.fail(err), output => Task.succeed(output))
-  }
+  def getAll: Task[List[User]] =
+    SQL.getAll.transact(xa).foldM(err => Task.fail(err), output => Task.succeed(output))
 
-  def create(user: User): Task[User] = {
-    get(user.id).flatMap(
-      user => Task.succeed(println("There is a duplicate, so not inserting")) *> Task.succeed(user)
-    ).orElse(
-      SQL.create(user).run.transact(xa).foldM(err => Task.fail(err), _ => Task.succeed(user))
-    )
-  }
+  def create(user: User): Task[User] =
+    get(user.id)
+      .flatMap(user => logger.infoIO(s"Not inserting as $user already exists") *> Task.succeed(user))
+      .orElse(SQL.create(user).transact(xa).foldM(err => Task.fail(err), _ => Task.succeed(user)))
 
   def delete(id: Long): Task[Boolean] =
-    SQL
-      .delete(id)
-      .run
-      .transact(xa)
-      .fold(_ => false, _ => true)
-
-
-  def update(user: User): Task[Boolean] = {
-    get(user.id).flatMap(
-      user1 => Task.succeed(println(s"Updating user ${user1} to ${user}")) *>
-        SQL
-          .update(user)
-          .run
-          .transact(xa)
-          .fold(_ => false, _ => true)
-    ).orElse(
-      Task.fail(UserNotFound(user.id))
+    get(id).foldM(
+      _ => Task.fail(UserNotFound(id)),
+      user =>
+        logger.infoIO(s"Deleting ${user}")
+          *> SQL.delete(id).transact(xa).fold(_ => false, _ => true)
     )
-  }
+
+  def update(user: User): Task[Boolean] =
+    get(user.id)
+      .flatMap(existingUser =>
+        logger.infoIO(s"Updating user ${existingUser} to ${user}") *>
+          SQL
+            .update(user)
+            .transact(xa)
+            .fold(_ => false, _ => true)
+      )
+      .orElse(Task.fail(UserNotFound(user.id)))
 }
 
 object SQL {
 
-  def getAll(): Query0[User] =
-    sql"""SELECT  id, name FROM USER""".queryWithLogHandler[User](LogHandler.jdkLogHandler)
+  import dc._
 
-  def get(id: Long): Query0[User] =
-    sql"""SELECT  id, name FROM USER where id=${id}""".queryWithLogHandler[User](LogHandler.jdkLogHandler)
+  def getAll: ConnectionIO[List[User]] =
+    run(quote {
+      user
+    })
 
-  def create(user: User): Update0 =
-    sql"""INSERT INTO USER (id, name) VALUES (${user.id}, ${user.name})""".updateWithLogHandler(LogHandler.jdkLogHandler)
+  def get(id: Long): ConnectionIO[List[User]] =
+    run(quote {
+      user.filter(_.id == lift(id))
+    })
 
-  def delete(id: Long): Update0 =
-    sql"""DELETE FROM USER WHERE id = $id""".update
+  def create(userIn: User): ConnectionIO[Long] =
+    run(quote {
+      user.insert(lift(userIn))
+    })
 
-  def update(user: User): Update0 =
-    sql"""UPDATE USER SET name = ${user.name} WHERE id = ${user.id}""".updateWithLogHandler(LogHandler.jdkLogHandler)
+  def delete(id: Long): ConnectionIO[Long] =
+    run(quote {
+      user.filter(_.id == lift(id)).delete
+    })
+
+  def update(userIn: User): ConnectionIO[Long] =
+    run(quote {
+      user.filter(_.id == lift(userIn.id)).update(_.name -> lift(userIn.name))
+    })
+
 }
-
-
-
-
-
-
-

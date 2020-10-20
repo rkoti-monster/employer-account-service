@@ -1,76 +1,119 @@
 package io.monster.ecomm.account.http.endpoint
 
-import org.http4s._
-import org.http4s.implicits._
-import zio.{Task, _}
-import zio.interop.catz._
-import zio.test.{testM, _}
-import zio.test.Assertion._
-import zio.test.interop.CatsTestFunctions
-import zio.test.interop.catz._
-import TestAspect._
-import Uri._
-import io.circe.{Decoder, Encoder}
-import io.monster.ecomm.account.environment.TestEnvironments.appEnvironmentLayer
-import io.monster.ecomm.account.http.HelloService
-import io.monster.ecomm.account.http.endpoint.Users.UserTask
-import io.monster.ecomm.account.model.{User, UserNotFound}
-import org.http4s.circe.{jsonEncoderOf, jsonOf}
-import zio.test.environment.TestEnvironment
-import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
-import org.http4s.circe._
-import io.circe._
-import io.circe.syntax._
+import io.circe.Encoder
+import io.circe.generic.auto._
 import io.circe.generic.semiauto._
-import zio.test.ExecutionStrategy.Sequential
-
-import scala.util.Try
+import io.monster.ecomm.account.environment.TestEnvironments.appEnvironmentLayer
+import io.monster.ecomm.account.http.endpoint.Users.{ UserTask, circeJsonDecoder }
+import io.monster.ecomm.account.model.User
+import org.http4s._
+import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
+import org.http4s.implicits._
+import zio._
+import zio.interop.catz._
+import zio.test.Assertion._
+import zio.test.TestAspect._
+import zio.test.environment.TestEnvironment
+import zio.test.{ testM, _ }
 
 object UserServiceSpec extends DefaultRunnableSpec {
-  override def spec = suite("routes suite")(
-    testM("GetAll users initially returns an empty list") {
-      val io = for {
-        result <- Users.routes.run(Request[UserTask](Method.GET, uri"/users")).value
-        body <- result.orNull.body.compile.toVector.map(x => x.map(_.toChar).mkString(""))
-      } yield body
-      assertM(io)(equalTo("[]"))
-    },
-    testM("Sleep") {
-      for {
-        _ <- ZIO.fromTry(Try{Thread.sleep(500)})
+
+  val user1 = User(1, "Howdy!");
+  val user2 = User(2, "Howdy1!")
+  val newUser1 = User(1, "Well!")
+  val nonExistingUser = User(100, "notThere")
+
+  override def spec =
+    suite("routes suite")(
+      testM("GetAll users initially returns an empty list") {
+        for {
+          resOpt <- Users.api.toRoutes().run(Request[UserTask](Method.GET, uri"/users")).value
+          res    <- ZIO.fromOption(resOpt)
+          body   <- res.as[List[User]]
+        } yield assert(body)(isEmpty)
+      },
+      testM("Create user creates a user successfully") {
+        implicit val UserEncoder: Encoder[User] = deriveEncoder[User]
+        val request = Request[UserTask](Method.POST, uri"/users").withEntity(user1)
+        for {
+          maybeResult <- Users.api.toRoutes().run(request).value
+          res         <- ZIO.fromOption(maybeResult)
+          body        <- res.as[User]
+        } yield assert(body)(equalTo(user1))
+      },
+      testM("Create two users") {
+        implicit val UserEncoder: Encoder[User] = deriveEncoder[User]
+        val request1 = Request[UserTask](Method.POST, uri"/users").withEntity(user1)
+        val request2 = Request[UserTask](Method.POST, uri"/users").withEntity(user2)
+        val read = Request[UserTask](Method.GET, uri"/users")
+        val readOne = Request[UserTask](Method.GET, uri"/users/1")
+        val readTwo = Request[UserTask](Method.GET, uri"/users/2")
+        val update = Request[UserTask](Method.PUT, uri"/users/1").withEntity(newUser1)
+        val updateThatWillFail = Request[UserTask](Method.PUT, uri"/users/100").withEntity(nonExistingUser)
+        val delete = Request[UserTask](Method.DELETE, uri"/users/2")
+        val deleteThatWillFail = Request[UserTask](Method.DELETE, uri"/users/100")
+
+        for {
+          maybeResult1 <- Users.api.toRoutes().run(request1).value
+          res1         <- ZIO.fromOption(maybeResult1)
+          body1        <- res1.as[User]
+
+          maybeResult2 <- Users.api.toRoutes().run(request2).value
+          res2         <- ZIO.fromOption(maybeResult2)
+          body2        <- res2.as[User]
+
+          maybeResult1_1 <- Users.api.toRoutes().run(request1).value
+          res1_1         <- ZIO.fromOption(maybeResult1_1)
+          body1_1        <- res1_1.as[User]
+
+          maybeResult3 <- Users.api.toRoutes().run(read).value
+          res3         <- ZIO.fromOption(maybeResult3)
+          body3        <- res3.as[List[User]]
+
+          maybeResult4 <- Users.api.toRoutes().run(readOne).value
+          res4         <- ZIO.fromOption(maybeResult4)
+          body4        <- res4.as[User]
+
+          maybeResult5 <- Users.api.toRoutes().run(readTwo).value
+          res5         <- ZIO.fromOption(maybeResult5)
+          body5        <- res5.as[User]
+
+          maybeResult6 <- Users.api.toRoutes().run(update).value
+          res6         <- ZIO.fromOption(maybeResult6)
+          body6        <- res6.as[Boolean]
+
+          maybeResult7 <- Users.api.toRoutes().run(read).value
+          res7         <- ZIO.fromOption(maybeResult7)
+          body7        <- res7.as[List[User]]
+
+          maybeResult8 <- Users.api.toRoutes().run(delete).value
+          res8         <- ZIO.fromOption(maybeResult8)
+          body8        <- res8.as[Boolean]
+
+          maybeResult9 <- Users.api.toRoutes().run(read).value
+          res9         <- ZIO.fromOption(maybeResult9)
+          body9        <- res9.as[List[User]]
+
+          maybeResult10 <- Users.api.toRoutes().run(updateThatWillFail).value
+          res10         <- ZIO.fromOption(maybeResult10)
+          body10        <- res10.as[String]
+
+          maybeResult11 <- Users.api.toRoutes().run(deleteThatWillFail).value
+          res11         <- ZIO.fromOption(maybeResult11)
+          body11        <- res11.as[String]
+
+        } yield assert(body1)(equalTo(user1)) &&
+          assert(body2)(equalTo(user2)) &&
+          assert(body1_1)(equalTo(user1)) &&
+          assert(body3.toSet)(equalTo(Set(user1, user2))) &&
+          assert(body4)(equalTo(user1)) &&
+          assert(body5)(equalTo(user2)) &&
+          assert(body6)(isTrue) &&
+          assert(body7.toSet)(equalTo(Set(user2, newUser1))) &&
+          assert(body8)(isTrue) &&
+          assert(body9)(equalTo(List(newUser1))) &&
+          assert(body10)(equalTo("User not found")) &&
+          assert(body11)(equalTo("User not found"))
       }
-      yield assertCompletes
-    },
-    testM("Create user creates a user succesfully") {
-      implicit val UserEncoder: Encoder[User] = deriveEncoder[User]
-      val request = Request[UserTask](Method.POST, uri"/users").withEntity(User(1, "Howdy!"))
-      val io = for {
-        result <- Users.routes.run(request).value
-        body <- result.orNull.body.compile.toVector.map(x => x.map(_.toChar).mkString(""))
-      } yield body
-      assertM(io)(equalTo("{\"id\":1,\"name\":\"Howdy!\"}"))
-    },
-    testM("Sleep") {
-      for {
-        _ <- ZIO.fromTry(Try{Thread.sleep(500)})
-      }
-        yield assertCompletes
-    },
-    testM("Create two users") {
-      implicit val UserEncoder: Encoder[User] = deriveEncoder[User]
-      val request = Request[UserTask](Method.POST, uri"/users").withEntity(User(1, "Howdy!"))
-      val request1 = Request[UserTask](Method.POST, uri"/users").withEntity(User(2, "Howdy1!"))
-      val read = Request[UserTask](Method.GET, uri"/users")
-      for {
-        result <- Users.routes.run(request).value
-        body1 <- result.orNull.body.compile.toVector.map(x => x.map(_.toChar).mkString(""))
-        result1 <- Users.routes.run(request1).value
-        body2 <- result1.orNull.body.compile.toVector.map(x => x.map(_.toChar).mkString(""))
-        result3 <- Users.routes.run(read).value
-        body3 <- result3.orNull.body.compile.toVector.map(x => x.map(_.toChar).mkString(""))
-      } yield
-        assert(body1)(equalTo("{\"id\":1,\"name\":\"Howdy!\"}")) &&
-          assert(body2)(equalTo("{\"id\":2,\"name\":\"Howdy1!\"}")) &&
-          assert(body3)(equalTo("[{\"id\":1,\"name\":\"Howdy!\"},{\"id\":2,\"name\":\"Howdy1!\"}]"))
-    }).provideSomeLayer[TestEnvironment](appEnvironmentLayer)
+    ).provideSomeLayer[TestEnvironment](appEnvironmentLayer) @@ sequential
 }

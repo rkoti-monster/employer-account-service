@@ -1,0 +1,24 @@
+Configuration:
+  name: default
+  status: warn
+
+  Appenders:
+
+    Console:
+      name: Console_Appender
+      target: SYSTEM_OUT
+      PatternLayout:
+        pattern: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%t] %highlight{%-5level}{FATAL=bg_red, ERROR=red, WARN=yellow, INFO=green, DEBUG=blue}- %c{1.} - %msg%n"
+
+  Loggers:
+    Logger:
+      - name: io.monster.ecomm.account
+        level: DEBUG
+        additivity: false
+        AppenderRef:
+          - ref: Console_Appender
+
+    Root:
+      level: INFO
+      AppenderRef:
+        - ref: Console_Appender

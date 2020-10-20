@@ -1,0 +1,24 @@
+version: '3.3'
+services:
+  db:
+    extends:
+      file: mysql-service.yml
+      service: db
+
+  employer-account-service:
+    image: employer-account-service
+    environment:
+      # DB URL
+      DB_URL: 'jdbc:mysql://db:3306/users?autoReconnect=true&useSSL=false&characterEncoding=utf8&useUnicode=true&serverTimezone=UTC'
+      JAVA_OPTS: -Dconfig.resource=dev.conf -Dlog4j.configurationFile=log4j2-docker.yml
+    ports:
+      - '8083:8083'
+    depends_on:
+      - db
+    networks:
+      - network1
+# Names our volume
+volumes:
+  my-db:
+networks:
+  network1:

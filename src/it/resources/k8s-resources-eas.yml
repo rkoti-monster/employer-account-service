@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: employer-account-service
+spec:
+  type: NodePort
+  ports:
+    - name: employer-account-service-port
+      port: 8083
+      targetPort: 8083
+      nodePort: 30310
+  selector:
+    app: employer-account-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: employer-account-service
+  labels:
+    app: employer-account-service
+spec:
+  selector:
+    matchLabels:
+      app: employer-account-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: employer-account-service
+    spec:
+      containers:
+        - image: employer-account-service:latest
+          name: employer-account-service
+          imagePullPolicy: Never
+          ports:
+            # exposing `SERVICES`
+            - containerPort: 8083
+          env:
+            - name: DB_URL
+              value: "jdbc:mysql://mysql:3306/users?autoReconnect=true&useSSL=false&characterEncoding=utf8&useUnicode=true&serverTimezone=UTC"
+            - name: JAVA_OPTS
+              value: '-Dconfig.resource=dev.conf'
+      initContainers:
+        - name: init-mydb
+          image: employer-account-service:latest
+          imagePullPolicy: Never
+          command: [ 'sh', '-c','echo waiting for mysql; sleep 15;']
